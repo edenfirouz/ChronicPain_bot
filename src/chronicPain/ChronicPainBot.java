@@ -59,17 +59,18 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
                 InfoService.activateUser(update.getMessage().getText(), this, chatID);
             } else if (users.get(chatID) == null) {
                 sendTextMessage("_קוד לא תקין_" + ansFromUser, "אנא הכנס קוד תקין", chatID);
-            } else if ((users.get(chatID)[1] != null && !didAnHourPass(chatID) && users.get(chatID)[2] == "false")||users.get(chatID)[2] == "true") {
-                sendTextMessage("_"+ansFromUser+"_", "אינך יכול לדווח כרגע. נא המתן עד תום השעה.", chatID);
+//            } else if ((users.get(chatID)[1] != null && !didAnHourPass(chatID) && users.get(chatID)[2] == "false")||users.get(chatID)[2] == "true") {
+             } else if (users.get(chatID)[2] == "true") {
+                sendTextMessage("_" + ansFromUser + "_", "אינך יכול לדווח כרגע. נא המתן עד תום השעה.", chatID);
                 /**
                  * handle with answers of users for Picard question
                  */
             } else if (ansFromUser.length() == 1 && isNumeric(ansFromUser)) {
-                boolean pain = markTheAns(Integer.parseInt(ansFromUser), chatID);
+                markTheAns(Integer.parseInt(ansFromUser), chatID);
                 int ansUser = Integer.parseInt((ansFromUser));
                 if (((JSONObject) ((JSONArray) getJSON(chatID).get("Messages")).get(0)).get("ConceptName").toString().contains("דקות")) {
                     if (ansUser < 1 || ansUser > 4) {
-                        sendTextMessage(ansFromUser +" _wrong input_", "אנא הכנס תשובה תקינה", chatID);
+                        sendTextMessage(ansFromUser + " _wrong input_", "אנא הכנס תשובה תקינה", chatID);
                         return;
                     } else {
                         String whatIs = ((JSONObject) ((JSONArray) getJSON(chatID).get("Messages")).get(Integer.parseInt(ansFromUser) - 1)).get("ConceptName").toString();
@@ -95,7 +96,7 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
                     }
                 } else if (((JSONObject) ((JSONArray) getJSON(chatID).get("Messages")).get(0)).get("ConceptName").toString().contains("רמת הכאב")) {
                     if (ansUser < 0 || ansUser > 10) {
-                        sendTextMessage(ansFromUser+"_wrong input_", "אנא הכנס תשובה תקינה", chatID);
+                        sendTextMessage(ansFromUser + "_wrong input_", "אנא הכנס תשובה תקינה", chatID);
                         return;
                     }
 //                    else if (ansUser >= 0 && ansUser < 3){}
@@ -105,17 +106,21 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
                     }
                 } else if (getJSON(chatID).get("CurrentResponseTitle").equals("מדוע לא נטלת את התרופה?")) {
                     if (ansUser < 1 || ansUser > 5) {
-                        sendTextMessage(ansFromUser+"_wrong input_", "אנא הכנס תשובה תקינה", chatID);
+                        sendTextMessage(ansFromUser + "_wrong input_", "אנא הכנס תשובה תקינה", chatID);
                         return;
                     }
                 }
 
                 Picard.sendToPicardResponse(Picard.GET_RECOMMENDATIONS, getJSON(chatID), this, chatID);
-                if (pain) {
-                    System.out.println(new java.util.Date() + " pain big than 5");
-                    doSnoozeOnce(60, chatID);
-                }
-            } else {
+//                if (pain) {
+//                    System.out.println(new java.util.Date() + " pain big than 5");
+//                    doSnoozeOnce(60, chatID);
+//                }
+            } else if(ansFromUser.contains("לדווח")){
+                String[] details = users.get(chatID);
+                String codeId = details[0];
+                codeIsOk(codeId, chatID);
+            }else {
                 sendTextMessage(ansFromUser+"_wrong input_", "אנא הכנס תשובה תקינה", chatID);
             }
         }
@@ -157,8 +162,8 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
      * @param chatID - ID for which user
      * @return true/false if the answer to the pain level is over 4
      */
-    private boolean markTheAns(int ans, long chatID) {
-        boolean pain = false;
+    private void markTheAns(int ans, long chatID) {
+//        boolean pain = false;
         JSONArray messages = getJSON(chatID).getJSONArray("Messages");
         if (messages.length() != 1) {
             ans = ans - 1;
@@ -180,13 +185,12 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
              */
         } else {
             if (ans > 2)
-                pain = true;
-            System.out.println("_"+ans+"_"+pain);
+                putIntoUser(chatID, "true", 2);
+            System.out.println("pain level: "+ans);
             JSONObject jsonObject = (JSONObject) messages.get(0);
             jsonObject.put("ResultContent", ans);
         }
         getJSON(chatID).put("Messages", messages);
-        return pain;
     }
 
     /**
@@ -317,10 +321,15 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
      * @param stringResponse - the JSON of picard  (String)
      * @param chatID - ID for which user
      */
-    public void handleResponse(String stringResponse, Long chatID) {
+    public void handleResponse( final String stringResponse, Long chatID) {
         JSONObject response = new JSONObject(JsonService.clearOldValue(stringResponse));
         jsonUsers.put(chatID, response);
         JSONArray messages = (JSONArray) response.get("Messages");
+        if (((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("20277")|| ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17828") || ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("20149") ||((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17798") ) {
+            doSnoozeOnce(60, chatID);
+            putIntoUser(chatID, "true", 2);
+
+        }
         if (response.get("CurrentResponseTitle").equals("מתי נטלת את התרופה ?")) {
             if (((JSONObject) messages.get(0)).get("ConceptName").equals("20 דקות"))
                 sendTextMessage("מתי נטלת 20_40", "מתי נטלת את התרופה?\n" +
@@ -340,10 +349,12 @@ public class ChronicPainBot extends TelegramLongPollingBot implements ResponseLi
         } else if ((((JSONObject) messages.get(0)).get("__type").equals("JsonService:#SpockAppStructs.Messages")) || (((JSONObject) messages.get(0)).get("__type").equals("Recommendation:#SpockAppStructs.Messages"))) {
             String recommendation = ((JSONObject) messages.get(0)).get("MessageName").toString();
             sendTextMessage(JsonService.buildRecommendation(recommendation)+" _המלצה_ ", JsonService.buildRecommendation(recommendation), chatID);
-        } else if (((JSONObject) messages.get(0)).get("ConceptName").equals("אם רמת הכאב שבה אתה חש שווה לאפס ?")) {
+
+//        } else if (((JSONObject) messages.get(0)).get("ConceptName").equals("אם רמת הכאב שבה אתה חש שווה לאפס ?")) {
+        } else if (((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17796") || ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17892") || ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17783")|| ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("20271")|| ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("20425")|| ((JSONObject) messages.get(0)).get("GuidelineID").toString().equals("17781")) {
             sendOptionMessage(chatID);
             sendImage("רמת כאב", "", chatID);
-        } else if (((JSONObject) messages.get(0)).get("ConceptName").equals("מהי רמת הכאב?")) {
+        } else if ((((JSONObject) messages.get(0)).get("ConceptName").equals("מהי רמת הכאב?"))) {
             sendOptionMessage(chatID);
             sendImage("רמת כאב", "", chatID);
         } else if (getJSON(chatID).get("CurrentResponseTitle").equals("מדוע לא נטלת את התרופה?")) {
